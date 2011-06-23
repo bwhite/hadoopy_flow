@@ -1,15 +1,25 @@
+
 import gevent
 import gevent.event
 import gevent.monkey
 gevent.monkey.patch_all()
 import subprocess
 import sys
+import atexit
 HADOOPY_OUTPUTS = {}  # Output paths (key is the path, value is an event).  A listener waits till the event is true.
 GREENLETS = []
 
 
+def Greenlet(func, *args, **kw):
+    a = gevent.Greenlet(func, *args, **kw)
+    GREENLETS.append(a)
+    return a
+
+
 def _wait_on_input(in_path):
     import hadoopy
+    if not hadoopy.exists(in_path) and in_path not in HADOOPY_OUTPUTS:
+        print('Flow: Path [%s] does not exist yet, we will wait for it but you must create it eventually.' % in_path)
     if not hadoopy.exists(in_path) or in_path in HADOOPY_OUTPUTS:
         print('Flow: Waiting for [%s]' % in_path)
         HADOOPY_OUTPUTS.setdefault(in_path, gevent.event.Event()).wait()
@@ -27,7 +37,9 @@ def _new_output(out_path):
 
 
 def joinall():
-    gevent.joinall(GREENLETS)
+    if GREENLETS:
+        print('Flow: Joining all outstanding Greenlets')
+        gevent.joinall(GREENLETS)
 
 
 class LazyReturn(object):
@@ -135,3 +147,4 @@ def patch_all():
     #hadoopy.rm = _patch_passive_hdfs(hadoopy.rm)
     #hadoopy.writetb = _patch_active_hdfs(hadoopy.writetb, 0, 'path')
 patch_all()
+atexit.register(joinall)

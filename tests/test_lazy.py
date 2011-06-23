@@ -41,10 +41,15 @@ def output_trivial():
     return {'process': 'my proc'}
 
 
+def output_longer():
+    gevent.sleep(2)
+    return {'process': 'my proc'}
+
+
 class Test(unittest.TestCase):
 
     def setUp(self):
-        self.a = gevent.Greenlet(output_trivial)
+        self.a = hadoopy_flow.Greenlet(output_trivial)
         self.a.start()
 
     def tearDown(self):
@@ -60,6 +65,9 @@ class Test(unittest.TestCase):
         b = hadoopy_flow.LazyReturn(a)
         b['test'] = 1
         self.assertEqual(set(hadoopy_flow.LazyReturn(a).keys()), set(['test', 'process']))
+
+    def test_longer(self):
+        hadoopy_flow.Greenlet(output_longer).start()
 
 if __name__ == '__main__':
     unittest.main()
