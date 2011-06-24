@@ -1,4 +1,3 @@
-
 import gevent
 import gevent.event
 import gevent.monkey
@@ -6,6 +5,7 @@ gevent.monkey.patch_all()
 import subprocess
 import sys
 import atexit
+import os
 HADOOPY_OUTPUTS = {}  # Output paths (key is the path, value is an event).  A listener waits till the event is true.
 GREENLETS = []
 
@@ -73,6 +73,8 @@ def patch_all():
     
     def _patch_launch(launch):
         def _inner(in_path, out_path, *args, **kw):
+            in_path = os.path.abspath(in_path)
+            out_path = os.path.abspath(out_path)
             _new_output(out_path)
             gevent.sleep()
             if isinstance(in_path, str):
