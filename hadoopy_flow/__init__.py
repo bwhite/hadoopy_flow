@@ -73,7 +73,10 @@ def patch_all():
     
     def _patch_launch(launch):
         def _inner(in_path, out_path, *args, **kw):
-            in_path = os.path.abspath(in_path)
+            if isinstance(in_path, str):
+                in_path = os.path.abspath(in_path)
+            else:
+                in_path = [os.path.abspath(x) for x in in_path]
             out_path = os.path.abspath(out_path)
             _new_output(out_path)
             gevent.sleep()
