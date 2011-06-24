@@ -60,12 +60,6 @@ class LazyReturn(object):
     def __delitem__(self, index):
         return self._greenlet.get().__delitem__(index)
 
-#    def __setattr__(self, name, value):
-#        return setattr(self._greenlet.get(), name, value)
-#
-#    def __delattr__(self, name):
-#        return delattr(self._greenlet.get(), name)
-
 
 def patch_all():
     if 'hadoopy' in sys.modules:
@@ -90,6 +84,7 @@ def patch_all():
             p = launch(in_path, out_path, wait=False, *args, **kw)
             while p['process'].poll() is None:
                 gevent.sleep(.1)
+            print('Flow: Process completed')
             if p['process'].returncode:
                 raise subprocess.CalledProcessError(p['process'].returncode, p['hadoop_cmds'][0])
             _set_output(out_path)
@@ -101,56 +96,27 @@ def patch_all():
             return LazyReturn(GREENLETS[-1])
         return _wrap
 
-    def _patch_passive_hdfs(hdfs):
-
-        def _inner(*args, **kw):
-            # Wait for everything to finish up until this point
-            gevent.sleep()
-            while 1:
-                if all([y.isSet() for x, y in HADOOPY_OUTPUTS.items()]):
-                    break
-                for x in HADOOPY_OUTPUTS:
-                    _wait_on_input(x)
-            return hdfs(*args, **kw)
-        return _inner
-
     def _patch_readers(hdfs):  # ls, readtb
 
         def _inner(path, *args, **kw):
-            print('Reader called on [%s]' % path)
+            path = os.path.abspath(path)
+            print('Flow: Reader called on [%s]' % path)
             # Wait for everything to finish up until this point
             gevent.sleep()
             _wait_on_input(path)
             return hdfs(path, *args, **kw)
         return _inner
 
-    def _patch_active_hdfs(hdfs, path_arg_num, path_kw):
-
-        def _inner(*args, **kw):
-            # Wait for everything to finish up until this point
-            gevent.sleep()
-            while 1:
-                if all([y.isSet() for x, y in HADOOPY_OUTPUTS.items()]):
-                    break
-                for x in HADOOPY_OUTPUTS:
-                    _wait_on_input(x)
-            out = hdfs(*args, **kw)
-            try:
-                _set_output(args[path_arg_num])
-            except IndexError:
-                _set_output(kw[path_kw])  # Put
-            return out
-        return _inner
-
     hadoopy.launch_frozen = _patch_launch(hadoopy.launch_frozen)
     hadoopy.launch = _patch_launch(hadoopy.launch)
     hadoopy.launch_local = _patch_launch(hadoopy.launch_local)
+    hadoopy.readtb = _patch_readers(hadoopy.readtb)
+    #hadoopy.rm = _patch_passive_hdfs(hadoopy.rm)
+    #hadoopy.writetb = _patch_active_hdfs(hadoopy.writetb, 0, 'path')
     #hadoopy.exists = _patch_passive_hdfs(hadoopy.exists)
     #hadoopy.get = _patch_passive_hdfs(hadoopy.get)
     #hadoopy.ls = _patch_readers(hadoopy.ls)
     #hadoopy.put = _patch_active_hdfs(hadoopy.put, 1, 'hdfs_path')
-    hadoopy.readtb = _patch_readers(hadoopy.readtb)
-    #hadoopy.rm = _patch_passive_hdfs(hadoopy.rm)
-    #hadoopy.writetb = _patch_active_hdfs(hadoopy.writetb, 0, 'path')
+
 patch_all()
 atexit.register(joinall)
