@@ -8,6 +8,7 @@ import atexit
 import os
 HADOOPY_OUTPUTS = {}  # Output paths (key is the path, value is an event).  A listener waits till the event is true.
 GREENLETS = []
+USE_EXISTING = False
 
 
 def Greenlet(func, *args, **kw):
@@ -39,10 +40,8 @@ def _new_output(out_path):
 
 def joinall():
     if GREENLETS:
-        pending = [x for x, y in HADOOPY_OUTPUTS.items() if not y.is_set()]
-        if pending:
-            print('Flow: Waiting for all outputs to be satisfied before joining [%s]' % (', '.join(pending)))
-        while any([not x.is_set() for x in HADOOPY_OUTPUTS.values()]):
+        print('Flow: Waiting until all Greenlets finish')
+        while [x for x in GREENLETS if not x.ready()]:
             gevent.sleep(.1)
         print('Flow: Joining all outstanding Greenlets')
         gevent.joinall(GREENLETS)
@@ -66,6 +65,10 @@ class LazyReturn(object):
         return self._greenlet.get().__delitem__(index)
 
 
+def canonicalize_path(path):
+    return path.replace('//', '/')  # NOTE(brandyn): Fixes minor typos, make more robust
+
+
 def patch_all():
     if 'hadoopy' in sys.modules:
         raise ImportError('You must import hadoopy_flow before hadoopy!')
@@ -73,12 +76,12 @@ def patch_all():
     
     def _patch_launch(launch):
         def _inner(in_path, out_path, *args, **kw):
-            if isinstance(in_path, str):
-                in_path = os.path.abspath(in_path)
-            else:
-                in_path = [os.path.abspath(x) for x in in_path]
-            out_path = os.path.abspath(out_path)
+            out_path = canonicalize_path(out_path)
             _new_output(out_path)
+            if isinstance(in_path, str):
+                in_path = canonicalize_path(in_path)
+            else:
+                in_path = [canonicalize_path(x) for x in in_path]
             gevent.sleep()
             if isinstance(in_path, str):
                 _wait_on_input(in_path)
@@ -86,12 +89,17 @@ def patch_all():
                 for x in in_path:
                     _wait_on_input(x)
             print('Flow: All inputs available [%s]' % str(in_path))
-            p = launch(in_path, out_path, wait=False, *args, **kw)
-            while p['process'].poll() is None:
-                gevent.sleep(.1)
-            print('Flow: Process completed')
-            if p['process'].returncode:
-                raise subprocess.CalledProcessError(p['process'].returncode, p['hadoop_cmds'][0])
+            if USE_EXISTING and hadoopy.exists(out_path):
+                print('Flow: Resusing output [%s]' % out_path)
+            else:
+                p = launch(in_path, out_path, wait=False, *args, **kw)
+                while p['process'].poll() is None:
+                    gevent.sleep(.1)
+                print('Flow: Process completed')
+                if p['process'].returncode:
+                    print('Flow: Task failed...quitting.')
+                    sys.exit(1)
+                    #raise subprocess.CalledProcessError(p['process'].returncode, p['hadoop_cmds'][0])
             _set_output(out_path)
             return p
 
@@ -104,7 +112,7 @@ def patch_all():
     def _patch_readers(hdfs):  # ls, readtb
 
         def _inner(path, *args, **kw):
-            path = os.path.abspath(path)
+            path = canonicalize_path(path)
             print('Flow: Reader called on [%s]' % path)
             # Wait for everything to finish up until this point
             gevent.sleep()
