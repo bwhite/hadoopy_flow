@@ -39,6 +39,11 @@ def _new_output(out_path):
 
 def joinall():
     if GREENLETS:
+        pending = [x for x, y in HADOOPY_OUTPUTS.items() if not y.is_set()]
+        if pending:
+            print('Flow: Waiting for all outputs to be satisfied before joining [%s]' % (', '.join(pending)))
+        while any([not x.is_set() for x in HADOOPY_OUTPUTS.values()]):
+            gevent.sleep(.1)
         print('Flow: Joining all outstanding Greenlets')
         gevent.joinall(GREENLETS)
 
