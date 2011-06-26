@@ -90,7 +90,9 @@ def patch_all():
                     _wait_on_input(x)
             print('Flow: All inputs available [%s]' % str(in_path))
             if USE_EXISTING and hadoopy.exists(out_path):
-                print('Flow: Resusing output [%s]' % out_path)
+                print(("Flow: Resusing output [%s].  1.) You can't use the return value"
+                       " of this command (it is set to None) and 2.) The existing output is assumed to be correct.") % out_path)
+                p = None
             else:
                 p = launch(in_path, out_path, wait=False, *args, **kw)
                 while p['process'].poll() is None:
@@ -120,10 +122,23 @@ def patch_all():
             return hdfs(path, *args, **kw)
         return _inner
 
+    def _patch_writers(hdfs):  # writetb
+
+        def _inner(out_path, *args, **kw):
+            out_path = canonicalize_path(out_path)
+            _new_output(out_path)
+            print('Flow: Writer called on [%s]' % out_path)
+            gevent.sleep()
+            out = hdfs(out_path, *args, **kw)
+            _set_output(out_path)
+            return out
+        return _inner
+
     hadoopy.launch_frozen = _patch_launch(hadoopy.launch_frozen)
     hadoopy.launch = _patch_launch(hadoopy.launch)
     hadoopy.launch_local = _patch_launch(hadoopy.launch_local)
     hadoopy.readtb = _patch_readers(hadoopy.readtb)
+    hadoopy.writetb = _patch_writers(hadoopy.writetb)
     #hadoopy.rm = _patch_passive_hdfs(hadoopy.rm)
     #hadoopy.writetb = _patch_active_hdfs(hadoopy.writetb, 0, 'path')
     #hadoopy.exists = _patch_passive_hdfs(hadoopy.exists)
