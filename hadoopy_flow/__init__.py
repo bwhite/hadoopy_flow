@@ -99,9 +99,9 @@ def patch_all():
                     gevent.sleep(.1)
                 print('Flow: Process completed')
                 if p['process'].returncode:
-                    print('Flow: Task failed...quitting.')
-                    sys.exit(1)
-                    #raise subprocess.CalledProcessError(p['process'].returncode, p['hadoop_cmds'][0])
+                    for x in range(10):
+                        print('Flow: Task failed....[%d/10]' % x)
+                    raise subprocess.CalledProcessError(p['process'].returncode, p['hadoop_cmds'][0])
             _set_output(out_path)
             return p
 
