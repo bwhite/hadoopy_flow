@@ -66,7 +66,8 @@ class LazyReturn(object):
 
 
 def canonicalize_path(path):
-    return path.replace('//', '/')  # NOTE(brandyn): Fixes minor typos, make more robust
+    import hadoopy
+    return hadoopy.abspath(path)
 
 
 def patch_all():
