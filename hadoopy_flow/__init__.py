@@ -130,7 +130,12 @@ def patch_all():
             _new_output(out_path)
             print('Flow: Writer called on [%s]' % out_path)
             gevent.sleep()
-            out = hdfs(out_path, *args, **kw)
+            if USE_EXISTING and hadoopy.exists(out_path):
+                print(("Flow: Resusing output [%s].  1.) You can't use the return value"
+                       " of this command (it is set to None) and 2.) The existing output is assumed to be correct.") % out_path)
+                out = None
+            else:
+                out = hdfs(out_path, *args, **kw)
             _set_output(out_path)
             return out
         return _inner
