@@ -142,7 +142,7 @@ def patch_all():
 
     hadoopy.launch_frozen = _patch_launch(hadoopy.launch_frozen)
     hadoopy.launch = _patch_launch(hadoopy.launch)
-    hadoopy.launch_local = _patch_launch(hadoopy.launch_local)
+    #hadoopy.launch_local = _patch_launch(hadoopy.launch_local)  # NOTE(brandyn): This needs to be fixed to support iterator outputs
     hadoopy.readtb = _patch_readers(hadoopy.readtb)
     hadoopy.writetb = _patch_writers(hadoopy.writetb)
     #hadoopy.rm = _patch_passive_hdfs(hadoopy.rm)
