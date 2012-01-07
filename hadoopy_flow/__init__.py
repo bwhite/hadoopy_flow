@@ -10,6 +10,12 @@ HADOOPY_OUTPUTS = {}  # Output paths (key is the path, value is an event).  A li
 GREENLETS = []
 USE_EXISTING = False
 
+# Graph Vars
+NODES = []
+EDGES = []
+NODE_CNT = 0
+PATH_TO_NUM = {}
+#
 
 def Greenlet(func, *args, **kw):
     a = gevent.Greenlet(func, *args, **kw)
@@ -45,6 +51,7 @@ def joinall():
             gevent.sleep(.1)
         print('Flow: Joining all outstanding Greenlets')
         gevent.joinall(GREENLETS)
+    print_graph()
 
 
 class LazyReturn(object):
@@ -70,13 +77,52 @@ def canonicalize_path(path):
     return hadoopy.abspath(path)
 
 
+def get_path_node(path):
+    global PATH_TO_NUM
+    if path not in PATH_TO_NUM:
+        PATH_TO_NUM[path] = 'p' + str(len(PATH_TO_NUM))
+        NODES.append('%s[label="%s",color=red]' % (PATH_TO_NUM[path], path))
+    return PATH_TO_NUM[path]
+
+
+def get_local_node():
+    return get_script_node('client_side', color='blue')
+
+
+def get_script_node(script_name, color='green'):
+    global NODE_CNT
+    script_node_name = 's' + str(NODE_CNT)
+    NODE_CNT += 1
+    NODES.append('%s[label="%s",color=%s]' % (script_node_name, script_name, color))
+    return script_node_name
+
+
+def update_graph(in_path, out_path, script_name):
+    if isinstance(in_path, str):
+        in_path = [in_path]
+    script_node_name = get_script_node(script_name)
+    cur_in_edges = []
+    for i in in_path:
+        cur_in_edges.append(get_path_node(i))
+    if len(cur_in_edges) == 1:
+        EDGES.append('%s->%s' % (cur_in_edges[0], script_node_name))
+    else:
+        EDGES.append('{%s}->%s' % (';'.join(cur_in_edges), script_node_name))
+    EDGES.append('%s->%s' % (script_node_name, get_path_node(out_path)))
+
+
+def print_graph():
+    meat = ';'.join(NODES + EDGES)
+    print('digraph G {%s}' % meat)
+
+
 def patch_all():
     if 'hadoopy' in sys.modules:
         raise ImportError('You must import hadoopy_flow before hadoopy!')
     import hadoopy
     
     def _patch_launch(launch):
-        def _inner(in_path, out_path, *args, **kw):
+        def _inner(in_path, out_path, script_path, *args, **kw):
             out_path = canonicalize_path(out_path)
             _new_output(out_path)
             if isinstance(in_path, str):
@@ -90,12 +136,13 @@ def patch_all():
                 for x in in_path:
                     _wait_on_input(x)
             print('Flow: All inputs available [%s]' % str(in_path))
+            update_graph(in_path, out_path, script_path)
             if USE_EXISTING and hadoopy.exists(out_path):
                 print(("Flow: Resusing output [%s].  1.) You can't use the return value"
                        " of this command (it is set to None) and 2.) The existing output is assumed to be correct.") % out_path)
                 p = None
             else:
-                p = launch(in_path, out_path, wait=False, *args, **kw)
+                p = launch(in_path, out_path, script_path, wait=False, *args, **kw)
                 while p['process'].poll() is None:
                     gevent.sleep(.1)
                 print('Flow: Process completed')
@@ -115,11 +162,13 @@ def patch_all():
     def _patch_readers(hdfs):  # ls, readtb
 
         def _inner(path, *args, **kw):
+            # TODO(brandyn): This will brake when readtb gets multiple paths, fix it!
             path = canonicalize_path(path)
             print('Flow: Reader called on [%s]' % path)
             # Wait for everything to finish up until this point
             gevent.sleep()
             _wait_on_input(path)
+            EDGES.append('%s->%s' % (get_path_node(path), get_local_node()))
             return hdfs(path, *args, **kw)
         return _inner
 
@@ -137,6 +186,7 @@ def patch_all():
             else:
                 out = hdfs(out_path, *args, **kw)
             _set_output(out_path)
+            EDGES.append('%s->%s' % (get_local_node(), get_path_node(out_path)))
             return out
         return _inner
 
